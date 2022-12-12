@@ -53,7 +53,7 @@ func fRead(path string) string {
 }
 
 func runBash(script string) string {
-	cmd := exec.Command("bash", "-c", script)
+	cmd := exec.Command("sh", "-c", script)
 	stdout, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Sprint(err) + " : " + string(stdout)
@@ -220,6 +220,18 @@ func delService(obj interface{}) {
 	}
 }
 
+func reread_ccd(ccdDir string) {
+	files, err := ioutil.ReadDir(ccdDir)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, file := range files {
+		log.Println("found file: " + ccdDir + "/" + file.Name())
+		load_ccd(ccdDir + "/" + file.Name())
+	}
+}
+
 func main() {
 
 	flag.Parse()
@@ -257,15 +269,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	files, err := ioutil.ReadDir(ccdDir)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	for _, file := range files {
-		log.Println("found file: " + ccdDir + "/" + file.Name())
-		load_ccd(ccdDir+"/"+file.Name(), true)
-	}
+	reread_ccd(ccdDir)
 
 	// Start listening for events.
 	go func() {
@@ -275,9 +279,11 @@ func main() {
 				if !ok {
 					return
 				}
-				if event.Has(fsnotify.Write) {
-					log.Println("modified file:", event.Name)
-					load_ccd(event.Name)
+				//if event.Has(fsnotify.Write) {
+				if event.Has(fsnotify.Remove) {
+					log.Info("Event: ", event, " File: ", event.Name, " Op: ", event.Op)
+					reread_ccd(ccdDir)
+					//load_ccd(event.Name)
 				}
 			case err, ok := <-watcher.Errors:
 				if !ok {
