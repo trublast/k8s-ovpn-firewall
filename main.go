@@ -114,7 +114,7 @@ func load_ccd(file string, init ...bool) {
 		for _, val := range user_list[ccd_name] {
 			if val.namespace == "" {
 				mask, _ := net.IPMask(net.ParseIP(val.netmask).To4()).Size()
-				runBash("ipset -A " + ip + " " + val.network + "/" + strconv.Itoa(mask))
+				runBash("ipset -A " + ccd_name + " " + val.network + "/" + strconv.Itoa(mask))
 				log.Infof("grant access for %s (%s) to network %s/%s", ccd_name, ip, val.network, strconv.Itoa(mask))
 			}
 		}
