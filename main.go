@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
 	"os/exec"
 	"strconv"
 
@@ -30,7 +29,7 @@ var (
 	user_list  = make(map[string][]access)
 	user       = make(map[string]string)
 	kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file. If not defined ServiceAccount will be used")
-	ccd        = flag.String("ccd", "/tmp/ccd", "path to directory with ccd files. If not defined /tmp/ccd will be used")
+	ccd        = flag.String("ccd", "/etc/openvpn/ccd", "path to directory with ccd files. If not defined /etc/openvpn/ccd will be used")
 	clientset  *kubernetes.Clientset
 	mutex      = sync.RWMutex{}
 )
@@ -50,15 +49,6 @@ func fRead(path string) string {
 	}
 
 	return string(content)
-}
-
-func runBash(script string) string {
-	cmd := exec.Command("bash", "-c", script)
-	stdout, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Sprint(err) + " : " + string(stdout)
-	}
-	return string(stdout)
 }
 
 func load_ccd(file string, init ...bool) {
@@ -105,17 +95,19 @@ func load_ccd(file string, init ...bool) {
 		}
 	}
 	if ip != "" {
-		runBash("ipset -N " + ccd_name + " nethash")
-		log.Infof("flush firewall rules for %s (%s)", ccd_name, ip)
-		runBash("iptables -D FORWARD -s " + ip + " -m set ! --match-set " + ccd_name + " dst -j REJECT")
-		runBash("iptables -D FORWARD -s " + ip + " -m set ! --match-set " + ccd_name + " dst -j REJECT")
-		runBash("ipset -F " + ccd_name)
+		exec.Command("sh", "-c", "ipset -N "+ccd_name+" nethash").Run()
+		exec.Command("sh", "-c", "iptables -D FORWARD -s "+ip+" -m set ! --match-set "+ccd_name+" dst -j REJECT").Run()
+		exec.Command("sh", "-c", "iptables -D FORWARD -s "+ip+" -m set ! --match-set "+ccd_name+" dst -j REJECT").Run()
+		if err := exec.Command("ipset", "-F", ccd_name).Run(); err == nil {
+			log.Infof("flush firewall rules for %s (%s)", ccd_name, ip)
+		}
 		mutex.RLock()
 		for _, val := range user_list[ccd_name] {
 			if val.namespace == "" {
 				mask, _ := net.IPMask(net.ParseIP(val.netmask).To4()).Size()
-				runBash("ipset -A " + ccd_name + " " + val.network + "/" + strconv.Itoa(mask))
-				log.Infof("grant access for %s (%s) to network %s/%s", ccd_name, ip, val.network, strconv.Itoa(mask))
+				if err := exec.Command("ipset", "-A", ccd_name, val.network+"/"+strconv.Itoa(mask)).Run(); err == nil {
+					log.Infof("grant access for %s (%s) to network %s/%s", ccd_name, ip, val.network, strconv.Itoa(mask))
+				}
 			}
 		}
 		mutex.RUnlock()
@@ -135,8 +127,9 @@ func load_ccd(file string, init ...bool) {
 				addService(&s)
 			}
 		}
-		log.Infof("enable firewall rules for %s (%s)", ccd_name, ip)
-		runBash("iptables -I FORWARD -s " + ip + " -m set ! --match-set " + ccd_name + " dst -j REJECT")
+		if err := exec.Command("sh", "-c", "iptables -I FORWARD -s "+ip+" -m set ! --match-set "+ccd_name+" dst -j REJECT").Run(); err == nil {
+			log.Infof("enable firewall rules for %s (%s)", ccd_name, ip)
+		}
 	}
 }
 
@@ -148,14 +141,16 @@ func addPod(obj interface{}) {
 			for _, val := range routes {
 				if val.namespace == pod.ObjectMeta.Namespace || val.namespace == "*" {
 					if val.label == "*" {
-						log.Infof("grant access for %s (%s) to pod %s with ip %s in namespace %s using template %s:%s", ccd_name, user[ccd_name], pod.Name, pod.Status.PodIP, pod.ObjectMeta.Namespace, val.namespace, val.label)
-						runBash("ipset -A " + ccd_name + " " + pod.Status.PodIP)
+						if err := exec.Command("ipset", "-A", ccd_name, pod.Status.PodIP).Run(); err == nil {
+							log.Infof("grant access for %s (%s) to pod %s with ip %s in namespace %s using template %s:%s", ccd_name, user[ccd_name], pod.Name, pod.Status.PodIP, pod.ObjectMeta.Namespace, val.namespace, val.label)
+						}
 					} else {
 						for podLabel, podLabelValue := range pod.ObjectMeta.Labels {
 							lv := podLabel + "=" + podLabelValue
 							if lv == val.label {
-								log.Infof("grant access for %s (%s) to pod %s with ip %s in namespace %s using template %s:%s", ccd_name, user[ccd_name], pod.Name, pod.Status.PodIP, pod.ObjectMeta.Namespace, val.namespace, val.label)
-								runBash("ipset -A " + ccd_name + " " + pod.Status.PodIP)
+								if err := exec.Command("ipset", "-A", ccd_name, pod.Status.PodIP).Run(); err == nil {
+									log.Infof("grant access for %s (%s) to pod %s with ip %s in namespace %s using template %s:%s", ccd_name, user[ccd_name], pod.Name, pod.Status.PodIP, pod.ObjectMeta.Namespace, val.namespace, val.label)
+								}
 								break
 							}
 						}
@@ -188,14 +183,16 @@ func addService(obj interface{}) {
 			for _, val := range routes {
 				if val.namespace == svc.ObjectMeta.Namespace || val.namespace == "*" {
 					if val.label == "*" {
-						log.Infof("grant access for %s (%s) to service %s with ip %s in namespace %s using template %s:%s", ccd_name, user[ccd_name], svc.Name, svc.Spec.ClusterIP, svc.ObjectMeta.Namespace, val.namespace, val.label)
-						runBash("ipset -A " + ccd_name + " " + svc.Spec.ClusterIP)
+						if err := exec.Command("ipset", "-A", ccd_name, svc.Spec.ClusterIP).Run(); err == nil {
+							log.Infof("grant access for %s (%s) to service %s with ip %s in namespace %s using template %s:%s", ccd_name, user[ccd_name], svc.Name, svc.Spec.ClusterIP, svc.ObjectMeta.Namespace, val.namespace, val.label)
+						}
 					} else {
 						for svcLabel, svcLabelValue := range svc.ObjectMeta.Labels {
 							lv := svcLabel + "=" + svcLabelValue
 							if lv == val.label {
-								log.Infof("grant access for %s (%s) to service %s with ip %s in namespace %s using template %s:%s", ccd_name, user[ccd_name], svc.Name, svc.Spec.ClusterIP, svc.ObjectMeta.Namespace, val.namespace, val.label)
-								runBash("ipset -A " + ccd_name + " " + svc.Spec.ClusterIP)
+								if err := exec.Command("ipset", "-A", ccd_name, svc.Spec.ClusterIP).Run(); err == nil {
+									log.Infof("grant access for %s (%s) to service %s with ip %s in namespace %s using template %s:%s", ccd_name, user[ccd_name], svc.Name, svc.Spec.ClusterIP, svc.ObjectMeta.Namespace, val.namespace, val.label)
+								}
 								break
 							}
 						}
