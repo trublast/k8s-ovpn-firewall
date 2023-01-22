@@ -4,5 +4,5 @@ RUN apk update && apk add binutils && cd build && ls -la && go mod tidy && go bu
 
 FROM alpine:3.16 AS export-stage
 COPY --from=build-stage /go/build/firewall /
-RUN apk update && apk add iptables ipset
+RUN apk add iptables ipset --no-cache
 CMD /firewall
