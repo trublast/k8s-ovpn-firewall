@@ -132,7 +132,9 @@ func load_ccd(file string, init ...bool) {
 		}
 	}
 }
-
+func updatePod(oldobj interface{}, obj interface{}) {
+        addPod(obj)
+}
 func addPod(obj interface{}) {
 	pod := obj.(*v1.Pod)
 	if pod.Status.PodIP != "" {
@@ -298,6 +300,7 @@ func main() {
 		0,
 		cache.ResourceEventHandlerFuncs{
 			AddFunc:    addPod,
+			UpdateFunc: updatePod,
 			DeleteFunc: delPod,
 		},
 	)
