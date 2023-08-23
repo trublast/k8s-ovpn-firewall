@@ -304,7 +304,7 @@ func main() {
 		cache.NewListWatchFromClient(clientset.CoreV1().RESTClient(),
 			string(v1.ResourcePods), v1.NamespaceAll, fields.Everything()),
 		&v1.Pod{},
-		0,
+		60,
 		cache.ResourceEventHandlerFuncs{
 			AddFunc:    addPod,
 			DeleteFunc: delPod,
@@ -318,7 +318,7 @@ func main() {
 		cache.NewListWatchFromClient(clientset.CoreV1().RESTClient(),
 			string(v1.ResourceServices), v1.NamespaceAll, fields.Everything()),
 		&v1.Service{},
-		0,
+		60,
 		cache.ResourceEventHandlerFuncs{
 			AddFunc:    addService,
 			DeleteFunc: delService,
